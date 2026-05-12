@@ -1,0 +1,36 @@
+PROJECT=Library/Library.csproj
+DB_CONTAINER=library-postgres
+DB_NAME=library
+DB_USER=postgres
+
+.PHONY: db seed run build down reset-db reset-db-seed logs psql clean
+
+db:
+	docker compose up -d --wait postgres
+
+run: db
+	dotnet run --project $(PROJECT)
+
+build:
+	dotnet build Library.sln
+
+down:
+	docker compose down
+
+reset-db:
+	docker compose down -v
+	docker compose up -d --wait postgres
+
+seed: db
+	docker exec -i -e PGPASSWORD=12345 $(DB_CONTAINER) psql -U $(DB_USER) -d $(DB_NAME) < db/seed.sql
+
+reset-db-seed: reset-db seed
+
+logs:
+	docker compose logs -f postgres
+
+psql:
+	docker exec -it -e PGPASSWORD=12345 $(DB_CONTAINER) psql -U $(DB_USER) -d $(DB_NAME)
+
+clean:
+	dotnet clean Library.sln

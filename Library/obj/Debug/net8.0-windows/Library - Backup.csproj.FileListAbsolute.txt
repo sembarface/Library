@@ -1,0 +1,22 @@
+C:\Users\LEGION_PRO\source\repos\Library\Library\bin\Debug\net8.0-windows\Library - Backup.exe
+C:\Users\LEGION_PRO\source\repos\Library\Library\bin\Debug\net8.0-windows\Library - Backup.deps.json
+C:\Users\LEGION_PRO\source\repos\Library\Library\bin\Debug\net8.0-windows\Library - Backup.runtimeconfig.json
+C:\Users\LEGION_PRO\source\repos\Library\Library\bin\Debug\net8.0-windows\Library - Backup.dll
+C:\Users\LEGION_PRO\source\repos\Library\Library\bin\Debug\net8.0-windows\Library - Backup.pdb
+C:\Users\LEGION_PRO\source\repos\Library\Library\bin\Debug\net8.0-windows\Microsoft.Extensions.DependencyInjection.Abstractions.dll
+C:\Users\LEGION_PRO\source\repos\Library\Library\bin\Debug\net8.0-windows\Microsoft.Extensions.Logging.Abstractions.dll
+C:\Users\LEGION_PRO\source\repos\Library\Library\bin\Debug\net8.0-windows\Npgsql.dll
+C:\Users\LEGION_PRO\source\repos\Library\Library\bin\Debug\net8.0-windows\System.Diagnostics.DiagnosticSource.dll
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library - Backup.csproj.AssemblyReference.cache
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library.Form1.resources
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library - Backup.csproj.GenerateResource.cache
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library - Backup.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library - Backup.AssemblyInfoInputs.cache
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library - Backup.AssemblyInfo.cs
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library - Backup.csproj.CoreCompileInputs.cache
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library - Backup.csproj.CopyComplete
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library - Backup.dll
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\refint\Library - Backup.dll
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library - Backup.pdb
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library - Backup.genruntimeconfig.cache
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\ref\Library - Backup.dll

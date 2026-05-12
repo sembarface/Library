@@ -1,0 +1,37 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.8.34408.163
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Library", "Library\Library.csproj", "{4601F4F4-AE5C-46F6-AA1C-A3877636A68A}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Database", "Database", "{E1EEB736-4791-45CD-8643-E62204F8BBEA}"
+	ProjectSection(SolutionItems) = preProject
+		db\init.sql = db\init.sql
+		db\seed.sql = db\seed.sql
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Run files", "Run files", "{165DA0D1-C3B5-40D1-8C3F-7107F1C8DF38}"
+	ProjectSection(SolutionItems) = preProject
+		docker-compose.yml = docker-compose.yml
+		Makefile = Makefile
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4601F4F4-AE5C-46F6-AA1C-A3877636A68A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4601F4F4-AE5C-46F6-AA1C-A3877636A68A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4601F4F4-AE5C-46F6-AA1C-A3877636A68A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4601F4F4-AE5C-46F6-AA1C-A3877636A68A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {DBC12FC6-81AC-43AB-A48E-80E208D2C7F8}
+	EndGlobalSection
+EndGlobal
