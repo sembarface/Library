@@ -148,9 +148,9 @@ namespace Library
             selectAll.Click += (_, _) => SetAllReportUniversities(true);
             var clearAll = CreateButton("Снять выбор", 470, 82);
             clearAll.Click += (_, _) => SetAllReportUniversities(false);
-            var build = CreateButton("Построить отчет", 610, 44);
+            var build = CreateButton("Построить отчет", 635, 44);
             build.Click += (_, _) => BuildReport();
-            var export = CreateButton("Экспорт в Excel", 610, 82);
+            var export = CreateButton("Экспорт в Excel", 635, 82);
             export.Click += (_, _) => ExportReport();
 
             top.Controls.AddRange([dateLabel, _reportDate, universitiesLabel, _reportUniversities, selectAll, clearAll, build, export]);
@@ -192,7 +192,7 @@ namespace Library
             var panel = new FlowLayoutPanel
             {
                 Dock = DockStyle.Top,
-                Height = 46,
+                Height = 56,
                 Padding = new Padding(8),
                 FlowDirection = FlowDirection.LeftToRight
             };
@@ -203,7 +203,8 @@ namespace Library
                 {
                     Text = buttonInfo.Text,
                     Width = 150,
-                    Height = 28
+                    Height = 32,
+                    Margin = new Padding(0, 0, 8, 0)
                 };
                 button.Click += buttonInfo.Handler;
                 panel.Controls.Add(button);
@@ -218,7 +219,7 @@ namespace Library
             {
                 Text = text,
                 Location = new Point(x, y),
-                Width = 125,
+                Width = 145,
                 Height = 30
             };
         }
@@ -403,6 +404,16 @@ namespace Library
             if (raw == null || raw == DBNull.Value)
             {
                 return null;
+            }
+
+            if (raw is DateOnly dateOnly)
+            {
+                return dateOnly.ToDateTime(TimeOnly.MinValue);
+            }
+
+            if (raw is DateTime dateTime)
+            {
+                return dateTime;
             }
 
             return Convert.ToDateTime(raw, CultureInfo.InvariantCulture);
@@ -904,7 +915,7 @@ namespace Library
 
     internal sealed class UniversityEditForm : Form
     {
-        private readonly TextBox _name = new() { Width = 320 };
+        private readonly TextBox _name = new() { Width = 520 };
 
         public string UniversityName => _name.Text.Trim();
 
@@ -921,18 +932,18 @@ namespace Library
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MinimizeBox = false;
             MaximizeBox = false;
-            ClientSize = new Size(470, 115);
+            ClientSize = new Size(560, 155);
 
-            Controls.Add(new Label { Text = label, Location = new Point(12, 18), AutoSize = true });
-            editor.Location = new Point(130, 15);
+            Controls.Add(new Label { Text = label, Location = new Point(16, 15), AutoSize = true });
+            editor.Location = new Point(16, 42);
             Controls.Add(editor);
-            AddDialogButtons(55);
+            AddDialogButtons(105);
         }
 
         private void AddDialogButtons(int y)
         {
-            var ok = new Button { Text = "Сохранить", Location = new Point(260, y), Width = 95 };
-            var cancel = new Button { Text = "Отмена", Location = new Point(365, y), Width = 95 };
+            var ok = new Button { Text = "Сохранить", Location = new Point(335, y), Width = 105, Height = 30 };
+            var cancel = new Button { Text = "Отмена", Location = new Point(445, y), Width = 105, Height = 30 };
             ok.Click += (_, _) =>
             {
                 if (string.IsNullOrWhiteSpace(UniversityName))
@@ -950,8 +961,8 @@ namespace Library
 
     internal sealed class BookEditForm : Form
     {
-        private readonly TextBox _title = new() { Width = 300 };
-        private readonly TextBox _author = new() { Width = 300 };
+        private readonly TextBox _title = new() { Width = 380 };
+        private readonly TextBox _author = new() { Width = 380 };
         private readonly NumericUpDown _cost = new() { Width = 120, DecimalPlaces = 2, Maximum = 1_000_000, Minimum = 0 };
 
         public string BookTitle => _title.Text.Trim();
@@ -969,12 +980,12 @@ namespace Library
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MinimizeBox = false;
             MaximizeBox = false;
-            ClientSize = new Size(450, 180);
+            ClientSize = new Size(540, 200);
 
             AddRow("Название", _title, 15);
             AddRow("Автор", _author, 50);
             AddRow("Стоимость", _cost, 85);
-            AddButtons(125);
+            AddButtons(145);
         }
 
         private void AddRow(string label, Control editor, int y)
@@ -986,8 +997,8 @@ namespace Library
 
         private void AddButtons(int y)
         {
-            var ok = new Button { Text = "Сохранить", Location = new Point(235, y), Width = 95 };
-            var cancel = new Button { Text = "Отмена", Location = new Point(340, y), Width = 95 };
+            var ok = new Button { Text = "Сохранить", Location = new Point(315, y), Width = 105, Height = 30 };
+            var cancel = new Button { Text = "Отмена", Location = new Point(425, y), Width = 105, Height = 30 };
             ok.Click += (_, _) =>
             {
                 if (string.IsNullOrWhiteSpace(BookTitle))
@@ -1005,8 +1016,8 @@ namespace Library
 
     internal sealed class StudentEditForm : Form
     {
-        private readonly TextBox _fullName = new() { Width = 310 };
-        private readonly ComboBox _university = new() { Width = 310, DropDownStyle = ComboBoxStyle.DropDownList };
+        private readonly TextBox _fullName = new() { Width = 400 };
+        private readonly ComboBox _university = new() { Width = 400, DropDownStyle = ComboBoxStyle.DropDownList };
         private readonly TextBox _group = new() { Width = 160 };
         private readonly TextBox _phone = new() { Width = 160 };
 
@@ -1035,12 +1046,12 @@ namespace Library
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MinimizeBox = false;
             MaximizeBox = false;
-            ClientSize = new Size(480, 220);
+            ClientSize = new Size(580, 240);
             AddRow("ФИО", _fullName, 15);
             AddRow("ВУЗ", _university, 50);
             AddRow("Группа", _group, 85);
             AddRow("Телефон", _phone, 120);
-            AddButtons(165);
+            AddButtons(185);
         }
 
         private void LoadUniversities(NpgsqlConnection connection)
@@ -1056,14 +1067,14 @@ namespace Library
         private void AddRow(string label, Control editor, int y)
         {
             Controls.Add(new Label { Text = label, Location = new Point(14, y + 4), AutoSize = true });
-            editor.Location = new Point(130, y);
+            editor.Location = new Point(150, y);
             Controls.Add(editor);
         }
 
         private void AddButtons(int y)
         {
-            var ok = new Button { Text = "Сохранить", Location = new Point(265, y), Width = 95 };
-            var cancel = new Button { Text = "Отмена", Location = new Point(370, y), Width = 95 };
+            var ok = new Button { Text = "Сохранить", Location = new Point(355, y), Width = 105, Height = 30 };
+            var cancel = new Button { Text = "Отмена", Location = new Point(465, y), Width = 105, Height = 30 };
             ok.Click += (_, _) =>
             {
                 if (string.IsNullOrWhiteSpace(FullName))
@@ -1088,13 +1099,13 @@ namespace Library
     internal sealed class IssueEditForm : Form
     {
         private readonly NpgsqlConnection _connection;
-        private readonly ComboBox _student = new() { Width = 330, DropDownStyle = ComboBoxStyle.DropDownList };
-        private readonly ComboBox _book = new() { Width = 330, DropDownStyle = ComboBoxStyle.DropDownList };
-        private readonly DateTimePicker _issueDate = new() { Width = 150, Format = DateTimePickerFormat.Short };
-        private readonly DateTimePicker _dueDate = new() { Width = 150, Format = DateTimePickerFormat.Short };
-        private readonly CheckBox _hasReturnDate = new() { Text = "Дата возврата указана", Width = 170 };
-        private readonly DateTimePicker _returnDate = new() { Width = 150, Format = DateTimePickerFormat.Short };
-        private readonly CheckBox _lost = new() { Text = "Книга утеряна", Width = 150 };
+        private readonly ComboBox _student = new() { Width = 450, DropDownStyle = ComboBoxStyle.DropDownList };
+        private readonly ComboBox _book = new() { Width = 450, DropDownStyle = ComboBoxStyle.DropDownList };
+        private readonly DateTimePicker _issueDate = new() { Width = 160, Format = DateTimePickerFormat.Short };
+        private readonly DateTimePicker _dueDate = new() { Width = 160, Format = DateTimePickerFormat.Short };
+        private readonly CheckBox _hasReturnDate = new() { Text = "Дата возврата указана", Width = 195 };
+        private readonly DateTimePicker _returnDate = new() { Width = 160, Format = DateTimePickerFormat.Short };
+        private readonly CheckBox _lost = new() { Text = "Книга утеряна", Width = 160 };
         private readonly NumericUpDown _payment = new() { Width = 130, DecimalPlaces = 2, Maximum = 1_000_000, Minimum = 0 };
 
         public int StudentId => Convert.ToInt32(_student.SelectedValue, CultureInfo.InvariantCulture);
@@ -1144,22 +1155,22 @@ namespace Library
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MinimizeBox = false;
             MaximizeBox = false;
-            ClientSize = new Size(530, 300);
+            ClientSize = new Size(640, 320);
 
             AddRow("Студент", _student, 15);
             AddRow("Книга", _book, 50);
             AddRow("Дата выдачи", _issueDate, 85);
             AddRow("Срок возврата", _dueDate, 120);
-            _hasReturnDate.Location = new Point(150, 155);
+            _hasReturnDate.Location = new Point(165, 155);
             _hasReturnDate.CheckedChanged += (_, _) => UpdateReturnControls();
             Controls.Add(_hasReturnDate);
-            _returnDate.Location = new Point(330, 153);
+            _returnDate.Location = new Point(430, 153);
             Controls.Add(_returnDate);
-            _lost.Location = new Point(150, 188);
+            _lost.Location = new Point(165, 188);
             _lost.CheckedChanged += (_, _) => UpdateLostPayment();
             Controls.Add(_lost);
             AddRow("Оплата", _payment, 220);
-            AddButtons(255);
+            AddButtons(275);
         }
 
         private void LoadLists()
@@ -1189,7 +1200,7 @@ namespace Library
         private void AddRow(string label, Control editor, int y)
         {
             Controls.Add(new Label { Text = label, Location = new Point(16, y + 4), AutoSize = true });
-            editor.Location = new Point(150, y);
+            editor.Location = new Point(165, y);
             Controls.Add(editor);
         }
 
@@ -1227,8 +1238,8 @@ namespace Library
 
         private void AddButtons(int y)
         {
-            var ok = new Button { Text = "Сохранить", Location = new Point(315, y), Width = 95 };
-            var cancel = new Button { Text = "Отмена", Location = new Point(420, y), Width = 95 };
+            var ok = new Button { Text = "Сохранить", Location = new Point(415, y), Width = 105, Height = 30 };
+            var cancel = new Button { Text = "Отмена", Location = new Point(525, y), Width = 105, Height = 30 };
             ok.Click += (_, _) =>
             {
                 if (_student.SelectedValue == null)

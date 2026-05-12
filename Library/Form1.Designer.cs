@@ -256,8 +256,8 @@ namespace Library
 
             ConfigureReportButton(buttonSelectAllUniversities, "Выбрать все", 470, 44);
             ConfigureReportButton(buttonClearUniversities, "Снять выбор", 470, 82);
-            ConfigureReportButton(buttonBuildReport, "Построить отчет", 610, 44);
-            ConfigureReportButton(buttonExportReport, "Экспорт в Excel", 610, 82);
+            ConfigureReportButton(buttonBuildReport, "Построить отчет", 635, 44);
+            ConfigureReportButton(buttonExportReport, "Экспорт в Excel", 635, 82);
             buttonSelectAllUniversities.Click += SelectAllReportUniversitiesButton_Click;
             buttonClearUniversities.Click += ClearReportUniversitiesButton_Click;
             buttonBuildReport.Click += BuildReportButton_Click;
@@ -309,7 +309,7 @@ namespace Library
         private static void ConfigureButtonPanel(FlowLayoutPanel panel)
         {
             panel.Dock = DockStyle.Top;
-            panel.Height = 46;
+            panel.Height = 56;
             panel.Padding = new Padding(8);
             panel.FlowDirection = FlowDirection.LeftToRight;
         }
@@ -318,14 +318,15 @@ namespace Library
         {
             button.Text = text;
             button.Width = width;
-            button.Height = 28;
+            button.Height = 32;
+            button.Margin = new Padding(0, 0, 8, 0);
         }
 
         private static void ConfigureReportButton(Button button, string text, int x, int y)
         {
             button.Text = text;
             button.Location = new Point(x, y);
-            button.Width = 125;
+            button.Width = 145;
             button.Height = 30;
         }
     }

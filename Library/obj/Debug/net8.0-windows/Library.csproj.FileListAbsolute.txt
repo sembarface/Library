@@ -19,4 +19,10 @@ C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\refint
 C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library.pdb
 C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library.genruntimeconfig.cache
 C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\ref\Library.dll
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library.sourcelink.json
+C:\Users\LEGION_PRO\source\repos\Library\artifacts\verify-build\Library.exe
+C:\Users\LEGION_PRO\source\repos\Library\artifacts\verify-build\Library.deps.json
+C:\Users\LEGION_PRO\source\repos\Library\artifacts\verify-build\Library.runtimeconfig.json
+C:\Users\LEGION_PRO\source\repos\Library\artifacts\verify-build\Library.dll
+C:\Users\LEGION_PRO\source\repos\Library\artifacts\verify-build\Library.pdb
 C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library.csproj.CopyComplete
