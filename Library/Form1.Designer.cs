@@ -7,11 +7,13 @@ namespace Library
         private TabControl tabControlMain;
         private TabPage tabUniversities;
         private TabPage tabBooks;
+        private TabPage tabStudents;
         private TabPage tabStudentsIssues;
         private TabPage tabReport;
 
         private DataGridView _universitiesGrid;
         private DataGridView _booksGrid;
+        private DataGridView _studentsCatalogGrid;
         private DataGridView _studentsGrid;
         private DataGridView _issuesGrid;
         private DataGridView _reportGrid;
@@ -64,11 +66,13 @@ namespace Library
             tabControlMain = new TabControl();
             tabUniversities = new TabPage();
             tabBooks = new TabPage();
+            tabStudents = new TabPage();
             tabStudentsIssues = new TabPage();
             tabReport = new TabPage();
 
             _universitiesGrid = new DataGridView();
             _booksGrid = new DataGridView();
+            _studentsCatalogGrid = new DataGridView();
             _studentsGrid = new DataGridView();
             _issuesGrid = new DataGridView();
             _reportGrid = new DataGridView();
@@ -108,6 +112,7 @@ namespace Library
 
             ((System.ComponentModel.ISupportInitialize)_universitiesGrid).BeginInit();
             ((System.ComponentModel.ISupportInitialize)_booksGrid).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)_studentsCatalogGrid).BeginInit();
             ((System.ComponentModel.ISupportInitialize)_studentsGrid).BeginInit();
             ((System.ComponentModel.ISupportInitialize)_issuesGrid).BeginInit();
             ((System.ComponentModel.ISupportInitialize)_reportGrid).BeginInit();
@@ -138,6 +143,7 @@ namespace Library
             tabControlMain.Dock = DockStyle.Fill;
             tabControlMain.Controls.Add(tabUniversities);
             tabControlMain.Controls.Add(tabBooks);
+            tabControlMain.Controls.Add(tabStudents);
             tabControlMain.Controls.Add(tabStudentsIssues);
             tabControlMain.Controls.Add(tabReport);
 
@@ -149,7 +155,11 @@ namespace Library
             tabBooks.Controls.Add(_booksGrid);
             tabBooks.Controls.Add(panelBooksButtons);
 
-            tabStudentsIssues.Text = "Студенты и выдачи";
+            tabStudents.Text = "Студенты";
+            tabStudents.Controls.Add(_studentsCatalogGrid);
+            tabStudents.Controls.Add(panelStudentsButtons);
+
+            tabStudentsIssues.Text = "Выдачи";
             tabStudentsIssues.Controls.Add(splitStudentsIssues);
 
             tabReport.Text = "Отчет";
@@ -158,6 +168,7 @@ namespace Library
 
             ConfigureGrid(_universitiesGrid);
             ConfigureGrid(_booksGrid);
+            ConfigureGrid(_studentsCatalogGrid);
             ConfigureGrid(_studentsGrid);
             ConfigureGrid(_issuesGrid);
             ConfigureGrid(_reportGrid);
@@ -190,7 +201,6 @@ namespace Library
             splitStudentsIssues.Orientation = Orientation.Horizontal;
             splitStudentsIssues.SplitterDistance = 300;
             splitStudentsIssues.Panel1.Controls.Add(_studentsGrid);
-            splitStudentsIssues.Panel1.Controls.Add(panelStudentsButtons);
             splitStudentsIssues.Panel2.Controls.Add(_issuesGrid);
             splitStudentsIssues.Panel2.Controls.Add(panelIssuesButtons);
 
@@ -283,12 +293,14 @@ namespace Library
             splitStudentsIssues.ResumeLayout(false);
             tabReport.ResumeLayout(false);
             tabStudentsIssues.ResumeLayout(false);
+            tabStudents.ResumeLayout(false);
             tabBooks.ResumeLayout(false);
             tabUniversities.ResumeLayout(false);
             tabControlMain.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)_reportGrid).EndInit();
             ((System.ComponentModel.ISupportInitialize)_issuesGrid).EndInit();
             ((System.ComponentModel.ISupportInitialize)_studentsGrid).EndInit();
+            ((System.ComponentModel.ISupportInitialize)_studentsCatalogGrid).EndInit();
             ((System.ComponentModel.ISupportInitialize)_booksGrid).EndInit();
             ((System.ComponentModel.ISupportInitialize)_universitiesGrid).EndInit();
             ResumeLayout(false);

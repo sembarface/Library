@@ -1,4 +1,5 @@
 using Npgsql;
+using NpgsqlTypes;
 using System.Data;
 using System.Globalization;
 using System.Net;
@@ -28,6 +29,7 @@ namespace Library
                 _connection = new NpgsqlConnection(connectionString);
                 _connection.Open();
 
+                EnsureDatabaseCompatibility();
                 LoadAll();
             }
             catch (Exception ex)
@@ -42,7 +44,20 @@ namespace Library
             _connection?.Dispose();
         }
 
-        private void StudentsGrid_SelectionChanged(object? sender, EventArgs e) => LoadIssuesForSelectedStudent();
+        private void EnsureDatabaseCompatibility()
+        {
+            Execute("""
+                drop index if exists uq_active_book_loan
+                """);
+
+            Execute("""
+                create unique index if not exists uq_active_book_loan
+                on book_loan_items(book_id)
+                where return_date is null
+                """);
+        }
+
+        private void StudentsGrid_SelectionChanged(object? sender, EventArgs e) => LoadLoanItemsForSelectedLoan();
         private void AddUniversityButton_Click(object? sender, EventArgs e) => AddUniversity();
         private void EditUniversityButton_Click(object? sender, EventArgs e) => EditUniversity();
         private void DeleteUniversityButton_Click(object? sender, EventArgs e) => DeleteUniversity();
@@ -110,7 +125,7 @@ namespace Library
                 SplitterDistance = 260
             };
 
-            _studentsGrid.SelectionChanged += (_, _) => LoadIssuesForSelectedStudent();
+            _studentsGrid.SelectionChanged += (_, _) => LoadLoanItemsForSelectedLoan();
 
             split.Panel1.Controls.Add(_studentsGrid);
             split.Panel1.Controls.Add(BuildButtonsPanel(
@@ -229,6 +244,7 @@ namespace Library
             LoadUniversities();
             LoadBooks();
             LoadStudents();
+            LoadLoans();
             LoadReportUniversities();
         }
 
@@ -254,6 +270,84 @@ namespace Library
             using var command = new NpgsqlCommand(sql, _connection);
             command.Parameters.AddRange(parameters);
             return command.ExecuteScalar();
+        }
+
+        private int GetOrCreateLoan(int studentId, DateTime loanDate)
+        {
+            var existing = Scalar("""
+                select id
+                from book_loans
+                where student_id = :studentId and loan_date = :loanDate
+                order by id
+                limit 1
+                """,
+                new NpgsqlParameter("studentId", studentId),
+                new NpgsqlParameter("loanDate", loanDate.Date));
+
+            if (existing != null && existing != DBNull.Value)
+            {
+                return Convert.ToInt32(existing, CultureInfo.InvariantCulture);
+            }
+
+            var created = Scalar("""
+                insert into book_loans(student_id, loan_date)
+                values(:studentId, :loanDate)
+                returning id
+                """,
+                new NpgsqlParameter("studentId", studentId),
+                new NpgsqlParameter("loanDate", loanDate.Date));
+
+            return Convert.ToInt32(created, CultureInfo.InvariantCulture);
+        }
+
+        private void DeleteEmptyLoan(int loanId)
+        {
+            Execute("""
+                delete from book_loans bl
+                where bl.id = :loanId
+                  and not exists (
+                      select 1
+                      from book_loan_items bli
+                      where bli.loan_id = bl.id
+                  )
+                """, new NpgsqlParameter("loanId", loanId));
+        }
+
+        private List<int> LoadLoanBookIds(int loanId)
+        {
+            var table = FillTable("""
+                select book_id
+                from book_loan_items
+                where loan_id = :loanId
+                order by book_id
+                """, new NpgsqlParameter("loanId", loanId));
+
+            return table.AsEnumerable()
+                .Select(row => Convert.ToInt32(row["book_id"], CultureInfo.InvariantCulture))
+                .ToList();
+        }
+
+        private bool TryGetSelectedLoanItem(out int loanId, out int bookId)
+        {
+            loanId = 0;
+            bookId = 0;
+            return TryGetGridInt(_issuesGrid, "loan_id", out loanId)
+                && TryGetGridInt(_issuesGrid, "book_id", out bookId);
+        }
+
+        private void RecalculateLoanPayment(int loanId)
+        {
+            Execute("""
+                update book_loans bl
+                set payment_amount = coalesce((
+                    select sum(b.cost)
+                    from book_loan_items bli
+                    join books b on b.id = bli.book_id
+                    where bli.loan_id = bl.id
+                      and bli.lost = true
+                ), 0)
+                where bl.id = :loanId
+                """, new NpgsqlParameter("loanId", loanId));
         }
 
         private void LoadUniversities()
@@ -282,59 +376,86 @@ namespace Library
                 join universities u on u.id = s.university_id
                 order by u.name, s.full_name
                 """);
-            _studentsGrid.DataSource = table;
-            RenameColumns(_studentsGrid,
+            _studentsCatalogGrid.DataSource = table;
+            RenameColumns(_studentsCatalogGrid,
                 ("id", "Номер"),
                 ("full_name", "ФИО"),
                 ("university_name", "ВУЗ"),
                 ("student_group", "Группа"),
                 ("phone", "Телефон"));
-            HideColumns(_studentsGrid, "university_id");
-            LoadIssuesForSelectedStudent();
+            HideColumns(_studentsCatalogGrid, "university_id");
         }
 
-        private void LoadIssuesForSelectedStudent()
+        private void LoadLoans()
         {
-            if (!TryGetGridInt(_studentsGrid, "id", out var studentId))
+            var table = FillTable("""
+                select bl.id as loan_id,
+                       bl.student_id,
+                       s.full_name as student_name,
+                       u.name as university_name,
+                       bl.loan_date,
+                       bl.due_date,
+                       bl.payment_amount,
+                       count(bli.book_id) as books_count
+                from book_loans bl
+                join students s on s.id = bl.student_id
+                join universities u on u.id = s.university_id
+                join book_loan_items bli on bli.loan_id = bl.id
+                group by bl.id, bl.student_id, s.full_name, u.name, bl.loan_date, bl.due_date, bl.payment_amount
+                order by bl.loan_date desc, bl.id desc
+                """);
+
+            _studentsGrid.DataSource = table;
+            RenameColumns(_studentsGrid,
+                ("loan_id", "Номер выдачи"),
+                ("student_name", "Студент"),
+                ("university_name", "ВУЗ"),
+                ("loan_date", "Дата выдачи"),
+                ("due_date", "Срок возврата"),
+                ("payment_amount", "Оплата"),
+                ("books_count", "Книг"));
+            HideColumns(_studentsGrid, "student_id");
+            LoadLoanItemsForSelectedLoan();
+        }
+
+        private void LoadLoanItemsForSelectedLoan()
+        {
+            if (!TryGetGridInt(_studentsGrid, "loan_id", out var loanId))
             {
                 _issuesGrid.DataSource = null;
                 return;
             }
 
             var table = FillTable("""
-                select bi.id,
-                       bi.student_id,
-                       bi.book_id,
-                       b.title as book_title,
+                select bli.loan_id,
+                       bli.book_id,
+                       b.title,
                        b.author,
-                       bi.issue_date,
-                       bi.due_date,
-                       bi.return_date,
-                       bi.lost,
-                       bi.payment_amount,
+                       b.cost,
+                       bli.return_date,
+                       bli.lost,
                        case
-                           when bi.lost then 'Утеряна'
-                           when bi.return_date is null then 'На руках'
-                           when bi.return_date > bi.due_date then 'Возвращена поздно'
+                           when bli.lost then 'Утеряна'
+                           when bli.return_date is null then 'На руках'
+                           when bli.return_date > bl.due_date then 'Возвращена поздно'
                            else 'Возвращена'
                        end as status
-                from book_issues bi
-                join books b on b.id = bi.book_id
-                where bi.student_id = :studentId
-                order by bi.issue_date desc, bi.id desc
-                """, new NpgsqlParameter("studentId", studentId));
+                from book_loan_items bli
+                join book_loans bl on bl.id = bli.loan_id
+                join books b on b.id = bli.book_id
+                where bli.loan_id = :loanId
+                order by b.title, b.author, b.id
+                """, new NpgsqlParameter("loanId", loanId));
 
             _issuesGrid.DataSource = table;
             RenameColumns(_issuesGrid,
-                ("id", "Номер"),
-                ("book_title", "Книга"),
+                ("book_id", "Номер книги"),
+                ("title", "Книга"),
                 ("author", "Автор"),
-                ("issue_date", "Дата выдачи"),
-                ("due_date", "Срок возврата"),
+                ("cost", "Стоимость"),
                 ("return_date", "Дата возврата"),
-                ("status", "Статус"),
-                ("payment_amount", "Оплата"));
-            HideColumns(_issuesGrid, "student_id", "book_id", "lost");
+                ("status", "Статус"));
+            HideColumns(_issuesGrid, "loan_id", "lost");
         }
 
         private void LoadReportUniversities()
@@ -419,6 +540,26 @@ namespace Library
             return Convert.ToDateTime(raw, CultureInfo.InvariantCulture);
         }
 
+        private static DateTime DbDate(object? raw)
+        {
+            if (raw == null || raw == DBNull.Value)
+            {
+                return DateTime.Today;
+            }
+
+            if (raw is DateOnly dateOnly)
+            {
+                return dateOnly.ToDateTime(TimeOnly.MinValue);
+            }
+
+            if (raw is DateTime dateTime)
+            {
+                return dateTime;
+            }
+
+            return Convert.ToDateTime(raw, CultureInfo.InvariantCulture);
+        }
+
         private static bool Confirm(string message)
         {
             return MessageBox.Show(message, "Подтверждение", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
@@ -434,6 +575,8 @@ namespace Library
 
             Execute("insert into universities(name) values(:name)", new NpgsqlParameter("name", form.UniversityName));
             LoadUniversities();
+            LoadStudents();
+            LoadLoans();
             LoadReportUniversities();
         }
 
@@ -509,7 +652,7 @@ namespace Library
                 new NpgsqlParameter("cost", form.Cost),
                 new NpgsqlParameter("id", id));
             LoadBooks();
-            LoadIssuesForSelectedStudent();
+            LoadLoans();
         }
 
         private void DeleteBook()
@@ -527,7 +670,7 @@ namespace Library
 
             Execute("delete from books where id = :id", new NpgsqlParameter("id", id));
             LoadBooks();
-            LoadIssuesForSelectedStudent();
+            LoadLoans();
         }
 
         private void AddStudent()
@@ -547,19 +690,20 @@ namespace Library
                 new NpgsqlParameter("studentGroup", form.StudentGroup),
                 new NpgsqlParameter("phone", form.Phone));
             LoadStudents();
+            LoadLoans();
         }
 
         private void EditStudent()
         {
-            if (!TryGetGridInt(_studentsGrid, "id", out var id))
+            if (!TryGetGridInt(_studentsCatalogGrid, "id", out var id))
             {
                 MessageBox.Show("Выберите студента для изменения.");
                 return;
             }
 
-            var universityId = Convert.ToInt32(_studentsGrid.CurrentRow!.Cells["university_id"].Value, CultureInfo.InvariantCulture);
-            using var form = new StudentEditForm(_connection, GridString(_studentsGrid, "full_name"), universityId,
-                GridString(_studentsGrid, "student_group"), GridString(_studentsGrid, "phone"));
+            var universityId = Convert.ToInt32(_studentsCatalogGrid.CurrentRow!.Cells["university_id"].Value, CultureInfo.InvariantCulture);
+            using var form = new StudentEditForm(_connection, GridString(_studentsCatalogGrid, "full_name"), universityId,
+                GridString(_studentsCatalogGrid, "student_group"), GridString(_studentsCatalogGrid, "phone"));
             if (form.ShowDialog(this) != DialogResult.OK)
             {
                 return;
@@ -576,11 +720,12 @@ namespace Library
                 new NpgsqlParameter("phone", form.Phone),
                 new NpgsqlParameter("id", id));
             LoadStudents();
+            LoadLoans();
         }
 
         private void DeleteStudent()
         {
-            if (!TryGetGridInt(_studentsGrid, "id", out var id))
+            if (!TryGetGridInt(_studentsCatalogGrid, "id", out var id))
             {
                 MessageBox.Show("Выберите студента для удаления.");
                 return;
@@ -593,132 +738,253 @@ namespace Library
 
             Execute("delete from students where id = :id", new NpgsqlParameter("id", id));
             LoadStudents();
+            LoadLoans();
         }
 
         private void AddIssue()
         {
-            var selectedStudentId = TryGetGridInt(_studentsGrid, "id", out var sid) ? sid : (int?)null;
-            using var form = new IssueEditForm(_connection, selectedStudentId);
+            using var form = new IssueEditForm(_connection);
             if (form.ShowDialog(this) != DialogResult.OK)
             {
                 return;
             }
 
-            Execute("""
-                insert into book_issues(student_id, book_id, issue_date, due_date, return_date, lost, payment_amount)
-                values(:studentId, :bookId, :issueDate, :dueDate, :returnDate, :lost, :payment)
-                """,
-                new NpgsqlParameter("studentId", form.StudentId),
-                new NpgsqlParameter("bookId", form.BookId),
-                new NpgsqlParameter("issueDate", form.IssueDate),
-                new NpgsqlParameter("dueDate", form.DueDate),
-                new NpgsqlParameter("returnDate", (object?)form.ReturnDate ?? DBNull.Value),
-                new NpgsqlParameter("lost", form.Lost),
-                new NpgsqlParameter("payment", form.PaymentAmount));
-            LoadStudents();
+            using var transaction = _connection.BeginTransaction();
+            try
+            {
+                using var loanCommand = new NpgsqlCommand("""
+                    insert into book_loans(student_id, loan_date, due_date, payment_amount)
+                    values(:studentId, :loanDate, :dueDate, 0)
+                    returning id
+                    """, _connection, transaction);
+                loanCommand.Parameters.AddWithValue("studentId", form.StudentId);
+                loanCommand.Parameters.AddWithValue("loanDate", form.LoanDate);
+                loanCommand.Parameters.AddWithValue("dueDate", form.DueDate);
+                var loanId = Convert.ToInt32(loanCommand.ExecuteScalar(), CultureInfo.InvariantCulture);
+
+                foreach (var bookId in form.SelectedBookIds)
+                {
+                    using var itemCommand = new NpgsqlCommand("""
+                        insert into book_loan_items(loan_id, book_id, return_date, lost)
+                        values(:loanId, :bookId, null, false)
+                        """, _connection, transaction);
+                    itemCommand.Parameters.AddWithValue("loanId", loanId);
+                    itemCommand.Parameters.AddWithValue("bookId", bookId);
+                    itemCommand.ExecuteNonQuery();
+                }
+
+                transaction.Commit();
+                LoadLoans();
+            }
+            catch (Exception ex)
+            {
+                transaction.Rollback();
+                MessageBox.Show("Ошибка при добавлении выдачи: " + ex.Message);
+            }
         }
 
         private void EditIssue()
         {
-            if (!TryGetGridInt(_issuesGrid, "id", out var id))
+            if (TryGetSelectedLoanItem(out var selectedLoanId, out var selectedBookId))
             {
-                MessageBox.Show("Выберите запись выдачи для изменения.");
+                EditLoanItem(selectedLoanId, selectedBookId);
                 return;
             }
 
-            var studentId = Convert.ToInt32(_issuesGrid.CurrentRow!.Cells["student_id"].Value, CultureInfo.InvariantCulture);
-            var bookId = Convert.ToInt32(_issuesGrid.CurrentRow.Cells["book_id"].Value, CultureInfo.InvariantCulture);
-            var returnDate = GridDate(_issuesGrid, "return_date");
-            var lost = Convert.ToBoolean(_issuesGrid.CurrentRow.Cells["lost"].Value, CultureInfo.InvariantCulture);
+            if (!TryGetGridInt(_studentsGrid, "loan_id", out var loanId))
+            {
+                MessageBox.Show("Выберите выдачу для изменения.");
+                return;
+            }
 
-            using var form = new IssueEditForm(_connection, studentId, bookId, GridDate(_issuesGrid, "issue_date") ?? DateTime.Today,
-                GridDate(_issuesGrid, "due_date") ?? DateTime.Today, returnDate, lost, GridDecimal(_issuesGrid, "payment_amount"));
+            var studentId = Convert.ToInt32(_studentsGrid.CurrentRow!.Cells["student_id"].Value, CultureInfo.InvariantCulture);
+            var loanDate = GridDate(_studentsGrid, "loan_date") ?? DateTime.Today;
+            var dueDate = GridDate(_studentsGrid, "due_date") ?? DateTime.Today;
+            var selectedBooks = LoadLoanBookIds(loanId);
+
+            using var form = new IssueEditForm(_connection, loanId, studentId, loanDate, dueDate, selectedBooks);
             if (form.ShowDialog(this) != DialogResult.OK)
             {
                 return;
             }
 
-            Execute("""
-                update book_issues
-                set student_id = :studentId,
-                    book_id = :bookId,
-                    issue_date = :issueDate,
-                    due_date = :dueDate,
-                    return_date = :returnDate,
-                    lost = :lost,
-                    payment_amount = :payment
-                where id = :id
+            using var transaction = _connection.BeginTransaction();
+            try
+            {
+                using var updateLoan = new NpgsqlCommand("""
+                    update book_loans
+                    set student_id = :studentId,
+                        loan_date = :loanDate,
+                        due_date = :dueDate
+                    where id = :loanId
+                    """, _connection, transaction);
+                updateLoan.Parameters.AddWithValue("studentId", form.StudentId);
+                updateLoan.Parameters.AddWithValue("loanDate", form.LoanDate);
+                updateLoan.Parameters.AddWithValue("dueDate", form.DueDate);
+                updateLoan.Parameters.AddWithValue("loanId", loanId);
+                updateLoan.ExecuteNonQuery();
+
+                using var deleteRemoved = new NpgsqlCommand("""
+                    delete from book_loan_items
+                    where loan_id = :loanId
+                      and lost = false
+                      and return_date is null
+                    """, _connection, transaction);
+                deleteRemoved.Parameters.AddWithValue("loanId", loanId);
+                deleteRemoved.ExecuteNonQuery();
+
+                foreach (var bookId in form.SelectedBookIds)
+                {
+                    using var insertItem = new NpgsqlCommand("""
+                        insert into book_loan_items(loan_id, book_id, return_date, lost)
+                        values(:loanId, :bookId, null, false)
+                        on conflict (loan_id, book_id) do nothing
+                        """, _connection, transaction);
+                    insertItem.Parameters.AddWithValue("loanId", loanId);
+                    insertItem.Parameters.AddWithValue("bookId", bookId);
+                    insertItem.ExecuteNonQuery();
+                }
+
+                transaction.Commit();
+                RecalculateLoanPayment(loanId);
+                LoadLoans();
+            }
+            catch (Exception ex)
+            {
+                transaction.Rollback();
+                MessageBox.Show("Ошибка при изменении выдачи: " + ex.Message);
+            }
+        }
+
+        private void EditLoanItem(int loanId, int bookId)
+        {
+            var table = FillTable("""
+                select bl.loan_date, b.title, b.author, bli.return_date, bli.lost
+                from book_loan_items bli
+                join book_loans bl on bl.id = bli.loan_id
+                join books b on b.id = bli.book_id
+                where bli.loan_id = :loanId and bli.book_id = :bookId
                 """,
-                new NpgsqlParameter("studentId", form.StudentId),
-                new NpgsqlParameter("bookId", form.BookId),
-                new NpgsqlParameter("issueDate", form.IssueDate),
-                new NpgsqlParameter("dueDate", form.DueDate),
-                new NpgsqlParameter("returnDate", (object?)form.ReturnDate ?? DBNull.Value),
-                new NpgsqlParameter("lost", form.Lost),
-                new NpgsqlParameter("payment", form.PaymentAmount),
-                new NpgsqlParameter("id", id));
-            LoadStudents();
+                new NpgsqlParameter("loanId", loanId),
+                new NpgsqlParameter("bookId", bookId));
+
+            if (table.Rows.Count == 0)
+            {
+                MessageBox.Show("Выбранная книга в выдаче не найдена.");
+                return;
+            }
+
+            var row = table.Rows[0];
+            var loanDate = DbDate(row["loan_date"]);
+            var title = Convert.ToString(row["title"], CultureInfo.InvariantCulture) ?? string.Empty;
+            var author = Convert.ToString(row["author"], CultureInfo.InvariantCulture) ?? string.Empty;
+            DateTime? returnDate = row["return_date"] == DBNull.Value ? null : DbDate(row["return_date"]);
+            var lost = Convert.ToBoolean(row["lost"], CultureInfo.InvariantCulture);
+
+            using var form = new LoanItemStateForm($"{title} - {author}", loanDate, returnDate, lost);
+            if (form.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+
+            try
+            {
+                Execute("""
+                    update book_loan_items
+                    set return_date = :returnDate,
+                        lost = :lost
+                    where loan_id = :loanId and book_id = :bookId
+                    """,
+                    new NpgsqlParameter("returnDate", (object?)form.ReturnDate ?? DBNull.Value),
+                    new NpgsqlParameter("lost", form.Lost),
+                    new NpgsqlParameter("loanId", loanId),
+                    new NpgsqlParameter("bookId", bookId));
+                RecalculateLoanPayment(loanId);
+                LoadLoans();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при изменении состояния книги: " + ex.Message);
+            }
         }
 
         private void DeleteIssue()
         {
-            if (!TryGetGridInt(_issuesGrid, "id", out var id))
+            if (!TryGetGridInt(_studentsGrid, "loan_id", out var loanId))
             {
-                MessageBox.Show("Выберите запись выдачи для удаления.");
+                MessageBox.Show("Выберите выдачу для удаления.");
                 return;
             }
 
-            if (!Confirm("Удалить выбранную запись выдачи?"))
+            if (!Confirm("Удалить выбранную выдачу вместе со всеми книгами?"))
             {
                 return;
             }
 
-            Execute("delete from book_issues where id = :id", new NpgsqlParameter("id", id));
-            LoadIssuesForSelectedStudent();
+            Execute("delete from book_loans where id = :loanId", new NpgsqlParameter("loanId", loanId));
+            LoadLoans();
         }
 
         private void MarkReturned()
         {
-            if (!TryGetGridInt(_issuesGrid, "id", out var id))
+            if (!TryGetSelectedLoanItem(out var loanId, out var bookId))
             {
-                MessageBox.Show("Выберите запись выдачи.");
+                MessageBox.Show("Выберите книгу в составе выдачи.");
                 return;
             }
 
-            Execute("""
-                update book_issues
-                set return_date = :returnDate, lost = false, payment_amount = 0
-                where id = :id
-                """,
-                new NpgsqlParameter("returnDate", DateTime.Today),
-                new NpgsqlParameter("id", id));
-            LoadIssuesForSelectedStudent();
+            try
+            {
+                var loanDate = DbDate(Scalar(
+                    "select loan_date from book_loans where id = :loanId",
+                    new NpgsqlParameter("loanId", loanId)));
+                if (DateTime.Today < loanDate)
+                {
+                    MessageBox.Show("Дата возврата не может быть раньше даты выдачи.");
+                    return;
+                }
+
+                Execute("""
+                    update book_loan_items
+                    set return_date = :returnDate, lost = false
+                    where loan_id = :loanId and book_id = :bookId
+                    """,
+                    new NpgsqlParameter("returnDate", DateTime.Today),
+                    new NpgsqlParameter("loanId", loanId),
+                    new NpgsqlParameter("bookId", bookId));
+                RecalculateLoanPayment(loanId);
+                LoadLoans();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при возврате книги: " + ex.Message);
+            }
         }
 
         private void MarkLost()
         {
-            if (!TryGetGridInt(_issuesGrid, "id", out var id))
+            if (!TryGetSelectedLoanItem(out var loanId, out var bookId))
             {
-                MessageBox.Show("Выберите запись выдачи.");
+                MessageBox.Show("Выберите книгу в составе выдачи.");
                 return;
             }
 
-            var cost = Scalar("""
-                select b.cost
-                from book_issues bi
-                join books b on b.id = bi.book_id
-                where bi.id = :id
-                """, new NpgsqlParameter("id", id));
-
-            Execute("""
-                update book_issues
-                set return_date = :returnDate, lost = true, payment_amount = :payment
-                where id = :id
-                """,
-                new NpgsqlParameter("returnDate", DateTime.Today),
-                new NpgsqlParameter("payment", Convert.ToDecimal(cost, CultureInfo.InvariantCulture)),
-                new NpgsqlParameter("id", id));
-            LoadIssuesForSelectedStudent();
+            try
+            {
+                Execute("""
+                    update book_loan_items
+                    set return_date = null, lost = true
+                    where loan_id = :loanId and book_id = :bookId
+                    """,
+                    new NpgsqlParameter("loanId", loanId),
+                    new NpgsqlParameter("bookId", bookId));
+                RecalculateLoanPayment(loanId);
+                LoadLoans();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при отметке утери книги: " + ex.Message);
+            }
         }
 
         private void SetAllReportUniversities(bool selected)
@@ -753,39 +1019,37 @@ namespace Library
             }
 
             _reportTable = FillTable("""
-                select s.full_name as "Студент",
-                       u.name as "ВУЗ",
+                select u.name as "ВУЗ",
+                       s.full_name as "Студент",
                        s.student_group as "Группа",
+                       s.phone as "Телефон",
+                       bl.id as "Номер выдачи",
+                       bl.loan_date as "Дата выдачи",
+                       bl.due_date as "Срок возврата",
+                       b.id as "Номер книги",
                        b.title as "Книга",
                        b.author as "Автор",
                        b.cost as "Стоимость",
-                       bi.issue_date as "Дата выдачи",
-                       bi.due_date as "Срок возврата",
-                       bi.return_date as "Дата возврата",
-                       case
-                           when bi.lost then 'Утеряна'
-                           when bi.return_date is null then 'Не возвращена'
-                           when bi.return_date > bi.due_date then 'Возвращена поздно'
-                           else 'Возвращена'
-                       end as "Статус",
-                       bi.payment_amount as "Оплата"
-                from book_issues bi
-                join students s on s.id = bi.student_id
+                       'Не возвращена' as "Статус"
+                from book_loans bl
+                join students s on s.id = bl.student_id
                 join universities u on u.id = s.university_id
-                join books b on b.id = bi.book_id
+                join book_loan_items bli on bli.loan_id = bl.id
+                join books b on b.id = bli.book_id
                 where u.id = any(:universityIds)
-                  and bi.issue_date <= :reportDate
-                  and bi.due_date < :reportDate
-                  and (bi.lost = true or bi.return_date is null or bi.return_date > bi.due_date)
-                order by u.name, s.full_name, b.title
+                  and bl.due_date < :reportDate
+                  and bli.return_date is null
+                  and bli.lost = false
+                order by u.name, s.full_name, bl.due_date, b.title
                 """,
                 new NpgsqlParameter("universityIds", ids.ToArray()),
                 new NpgsqlParameter("reportDate", _reportDate.Value.Date));
 
             _reportGrid.DataSource = _reportTable;
             _chartData = _reportTable.AsEnumerable()
-                .GroupBy(row => Convert.ToString(row["ВУЗ"], CultureInfo.InvariantCulture) ?? string.Empty)
-                .OrderBy(group => group.Key)
+                .GroupBy(row => Convert.ToString(row["Студент"], CultureInfo.InvariantCulture) ?? string.Empty)
+                .OrderByDescending(group => group.Count())
+                .ThenBy(group => group.Key)
                 .ToDictionary(group => group.Key, group => group.Count());
             _chartPanel.Invalidate();
         }
@@ -800,7 +1064,7 @@ namespace Library
             using var textBrush = new SolidBrush(Color.Black);
             using var axisPen = new Pen(Color.DimGray);
 
-            graphics.DrawString("Соотношение не сданных книг по ВУЗам", titleFont, textBrush, 16, 12);
+            graphics.DrawString("Количество не сданных книг по студентам", titleFont, textBrush, 16, 12);
 
             if (_chartData.Count == 0)
             {
@@ -862,14 +1126,14 @@ namespace Library
             AppendHtmlTable(html, _reportTable);
 
             var summary = new DataTable();
-            summary.Columns.Add("ВУЗ");
+            summary.Columns.Add("Студент");
             summary.Columns.Add("Количество не сданных книг");
             foreach (var item in _chartData)
             {
                 summary.Rows.Add(item.Key, item.Value);
             }
 
-            html.AppendLine("<h3>Итоги по ВУЗам</h3>");
+            html.AppendLine("<h3>Итоги по студентам</h3>");
             AppendHtmlTable(html, summary);
             html.AppendLine("</body></html>");
 
@@ -1096,57 +1360,173 @@ namespace Library
         }
     }
 
+    internal sealed class LoanItemStateForm : Form
+    {
+        private readonly DateTime _loanDate;
+        private readonly Label _bookLabel = new() { AutoSize = true };
+        private readonly CheckBox _hasReturnDate = new() { Text = "Дата возврата", Width = 160 };
+        private readonly DateTimePicker _returnDate = new() { Width = 160, Format = DateTimePickerFormat.Short };
+        private readonly CheckBox _lost = new() { Text = "Книга утеряна", Width = 160 };
+        private bool _updatingState;
+
+        public DateTime? ReturnDate => _hasReturnDate.Checked ? _returnDate.Value.Date : null;
+        public bool Lost => _lost.Checked;
+
+        public LoanItemStateForm(string bookName, DateTime loanDate, DateTime? returnDate, bool lost)
+        {
+            _loanDate = loanDate.Date;
+            Text = "Изменить состояние книги";
+
+            StartPosition = FormStartPosition.CenterParent;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MinimizeBox = false;
+            MaximizeBox = false;
+            ClientSize = new Size(520, 190);
+
+            _bookLabel.Text = bookName;
+            _bookLabel.Location = new Point(16, 16);
+            _bookLabel.MaximumSize = new Size(480, 0);
+            Controls.Add(_bookLabel);
+
+            _hasReturnDate.Location = new Point(16, 65);
+            _hasReturnDate.Checked = returnDate.HasValue;
+            _hasReturnDate.CheckedChanged += (_, _) => UpdateReturnState();
+            Controls.Add(_hasReturnDate);
+
+            _returnDate.Location = new Point(190, 62);
+            _returnDate.Value = returnDate ?? DateTime.Today;
+            Controls.Add(_returnDate);
+
+            _lost.Location = new Point(16, 100);
+            _lost.Checked = lost;
+            _lost.CheckedChanged += (_, _) => UpdateLostState();
+            Controls.Add(_lost);
+
+            var ok = new Button { Text = "Сохранить", Location = new Point(300, 145), Width = 105, Height = 30 };
+            var cancel = new Button { Text = "Отмена", Location = new Point(410, 145), Width = 95, Height = 30 };
+
+            ok.Click += (_, _) =>
+            {
+                if (ReturnDate.HasValue && ReturnDate.Value < _loanDate)
+                {
+                    MessageBox.Show("Дата возврата не может быть раньше даты выдачи.");
+                    return;
+                }
+
+                if (Lost && ReturnDate.HasValue)
+                {
+                    MessageBox.Show("Книга не может быть одновременно возвращена и утеряна.");
+                    return;
+                }
+
+                DialogResult = DialogResult.OK;
+            };
+            cancel.Click += (_, _) => DialogResult = DialogResult.Cancel;
+            Controls.AddRange([ok, cancel]);
+
+            ApplyState();
+        }
+
+        private void UpdateReturnState()
+        {
+            if (_updatingState)
+            {
+                return;
+            }
+
+            _updatingState = true;
+            if (_hasReturnDate.Checked)
+            {
+                _lost.Checked = false;
+            }
+            _returnDate.Enabled = _hasReturnDate.Checked;
+            _updatingState = false;
+        }
+
+        private void UpdateLostState()
+        {
+            if (_updatingState)
+            {
+                return;
+            }
+
+            _updatingState = true;
+            if (_lost.Checked)
+            {
+                _hasReturnDate.Checked = false;
+            }
+            _returnDate.Enabled = _hasReturnDate.Checked;
+            _updatingState = false;
+        }
+
+        private void ApplyState()
+        {
+            _updatingState = true;
+            if (_lost.Checked)
+            {
+                _hasReturnDate.Checked = false;
+            }
+            _returnDate.Enabled = _hasReturnDate.Checked;
+            _updatingState = false;
+        }
+    }
+
     internal sealed class IssueEditForm : Form
     {
         private readonly NpgsqlConnection _connection;
-        private readonly ComboBox _student = new() { Width = 450, DropDownStyle = ComboBoxStyle.DropDownList };
-        private readonly ComboBox _book = new() { Width = 450, DropDownStyle = ComboBoxStyle.DropDownList };
-        private readonly DateTimePicker _issueDate = new() { Width = 160, Format = DateTimePickerFormat.Short };
+        private readonly int? _currentLoanId;
+        private readonly ComboBox _student = new() { Width = 470, DropDownStyle = ComboBoxStyle.DropDownList };
+        private readonly DateTimePicker _loanDate = new() { Width = 160, Format = DateTimePickerFormat.Short };
         private readonly DateTimePicker _dueDate = new() { Width = 160, Format = DateTimePickerFormat.Short };
-        private readonly CheckBox _hasReturnDate = new() { Text = "Дата возврата указана", Width = 195 };
-        private readonly DateTimePicker _returnDate = new() { Width = 160, Format = DateTimePickerFormat.Short };
-        private readonly CheckBox _lost = new() { Text = "Книга утеряна", Width = 160 };
-        private readonly NumericUpDown _payment = new() { Width = 130, DecimalPlaces = 2, Maximum = 1_000_000, Minimum = 0 };
+        private readonly CheckedListBox _books = new() { Width = 470, Height = 220, CheckOnClick = true };
+        private readonly HashSet<int> _initialBookIds;
 
         public int StudentId => Convert.ToInt32(_student.SelectedValue, CultureInfo.InvariantCulture);
-        public int BookId => Convert.ToInt32(_book.SelectedValue, CultureInfo.InvariantCulture);
-        public DateTime IssueDate => _issueDate.Value.Date;
+        public DateTime LoanDate => _loanDate.Value.Date;
         public DateTime DueDate => _dueDate.Value.Date;
-        public DateTime? ReturnDate => _hasReturnDate.Checked ? _returnDate.Value.Date : null;
-        public bool Lost => _lost.Checked;
-        public decimal PaymentAmount => _payment.Value;
-
-        public IssueEditForm(NpgsqlConnection connection, int? selectedStudentId)
+        public List<int> SelectedBookIds
         {
-            _connection = connection;
-            Text = "Добавить выдачу";
-            Build();
-            LoadLists();
-            _issueDate.Value = DateTime.Today;
-            _dueDate.Value = DateTime.Today.AddDays(14);
-            if (selectedStudentId.HasValue)
+            get
             {
-                _student.SelectedValue = selectedStudentId.Value;
+                var result = new List<int>();
+                foreach (var item in _books.CheckedItems)
+                {
+                    if (item is DataRowView row)
+                    {
+                        result.Add(Convert.ToInt32(row["id"], CultureInfo.InvariantCulture));
+                    }
+                }
+
+                return result;
             }
-            UpdateReturnControls();
         }
 
-        public IssueEditForm(NpgsqlConnection connection, int studentId, int bookId, DateTime issueDate, DateTime dueDate,
-            DateTime? returnDate, bool lost, decimal payment)
+        public IssueEditForm(NpgsqlConnection connection)
+            : this(connection, null, null, DateTime.Today, DateTime.Today.AddDays(14), [])
+        {
+            Text = "Добавить выдачу";
+        }
+
+        public IssueEditForm(NpgsqlConnection connection, int currentLoanId, int studentId, DateTime loanDate, DateTime dueDate, List<int> selectedBookIds)
+            : this(connection, (int?)currentLoanId, (int?)studentId, loanDate, dueDate, selectedBookIds)
+        {
+            Text = "Изменить выдачу";
+        }
+
+        private IssueEditForm(NpgsqlConnection connection, int? currentLoanId, int? studentId, DateTime loanDate, DateTime dueDate, List<int> selectedBookIds)
         {
             _connection = connection;
-            Text = "Изменить выдачу";
+            _currentLoanId = currentLoanId;
+            _initialBookIds = selectedBookIds.ToHashSet();
             Build();
-            LoadLists();
-            _student.SelectedValue = studentId;
-            _book.SelectedValue = bookId;
-            _issueDate.Value = issueDate;
+            LoadStudents();
+            LoadBooks();
+            _loanDate.Value = loanDate;
             _dueDate.Value = dueDate;
-            _hasReturnDate.Checked = returnDate.HasValue;
-            _returnDate.Value = returnDate ?? DateTime.Today;
-            _lost.Checked = lost;
-            _payment.Value = Math.Min(_payment.Maximum, Math.Max(_payment.Minimum, payment));
-            UpdateReturnControls();
+            if (studentId.HasValue)
+            {
+                _student.SelectedValue = studentId.Value;
+            }
         }
 
         private void Build()
@@ -1155,46 +1535,63 @@ namespace Library
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MinimizeBox = false;
             MaximizeBox = false;
-            ClientSize = new Size(640, 320);
+            ClientSize = new Size(660, 430);
 
             AddRow("Студент", _student, 15);
-            AddRow("Книга", _book, 50);
-            AddRow("Дата выдачи", _issueDate, 85);
-            AddRow("Срок возврата", _dueDate, 120);
-            _hasReturnDate.Location = new Point(165, 155);
-            _hasReturnDate.CheckedChanged += (_, _) => UpdateReturnControls();
-            Controls.Add(_hasReturnDate);
-            _returnDate.Location = new Point(430, 153);
-            Controls.Add(_returnDate);
-            _lost.Location = new Point(165, 188);
-            _lost.CheckedChanged += (_, _) => UpdateLostPayment();
-            Controls.Add(_lost);
-            AddRow("Оплата", _payment, 220);
-            AddButtons(275);
+            AddRow("Дата выдачи", _loanDate, 50);
+            AddRow("Срок возврата", _dueDate, 85);
+            Controls.Add(new Label { Text = "Книги", Location = new Point(16, 124), AutoSize = true });
+            _books.Location = new Point(165, 120);
+            Controls.Add(_books);
+            AddButtons(375);
         }
 
-        private void LoadLists()
+        private void LoadStudents()
         {
-            _student.DataSource = LoadTable("""
+            using var adapter = new NpgsqlDataAdapter("""
                 select s.id, s.full_name || ' (' || u.name || ')' as display_name
                 from students s
                 join universities u on u.id = s.university_id
                 order by s.full_name
-                """);
-            _student.DisplayMember = "display_name";
-            _student.ValueMember = "id";
-
-            _book.DataSource = LoadTable("select id, title || ' - ' || author as display_name from books order by title");
-            _book.DisplayMember = "display_name";
-            _book.ValueMember = "id";
-        }
-
-        private DataTable LoadTable(string sql)
-        {
-            using var adapter = new NpgsqlDataAdapter(sql, _connection);
+                """, _connection);
             var table = new DataTable();
             adapter.Fill(table);
-            return table;
+            _student.DataSource = table;
+            _student.DisplayMember = "display_name";
+            _student.ValueMember = "id";
+        }
+
+        private void LoadBooks()
+        {
+            using var command = new NpgsqlCommand("""
+                select b.id, b.title || ' - ' || b.author || ' (экз. ' || b.id || ')' as display_name
+                from books b
+                where not exists (
+                    select 1
+                    from book_loan_items bli
+                    where bli.book_id = b.id
+                      and bli.return_date is null
+                      and (:currentLoanId is null or bli.loan_id <> :currentLoanId)
+                )
+                order by b.title, b.author, b.id
+                """, _connection);
+            command.Parameters.Add("currentLoanId", NpgsqlDbType.Integer).Value = (object?)_currentLoanId ?? DBNull.Value;
+            using var adapter = new NpgsqlDataAdapter(command);
+            var table = new DataTable();
+            adapter.Fill(table);
+
+            _books.DataSource = table;
+            _books.DisplayMember = "display_name";
+            _books.ValueMember = "id";
+
+            for (var i = 0; i < _books.Items.Count; i++)
+            {
+                if (_books.Items[i] is DataRowView row)
+                {
+                    var bookId = Convert.ToInt32(row["id"], CultureInfo.InvariantCulture);
+                    _books.SetItemChecked(i, _initialBookIds.Contains(bookId));
+                }
+            }
         }
 
         private void AddRow(string label, Control editor, int y)
@@ -1204,42 +1601,10 @@ namespace Library
             Controls.Add(editor);
         }
 
-        private void UpdateReturnControls()
-        {
-            _returnDate.Enabled = _hasReturnDate.Checked;
-            if (!_hasReturnDate.Checked)
-            {
-                _lost.Checked = false;
-                _payment.Value = 0;
-            }
-        }
-
-        private void UpdateLostPayment()
-        {
-            if (!_lost.Checked)
-            {
-                return;
-            }
-
-            _hasReturnDate.Checked = true;
-            if (_book.SelectedValue == null)
-            {
-                return;
-            }
-
-            using var command = new NpgsqlCommand("select cost from books where id = :id", _connection);
-            command.Parameters.AddWithValue("id", Convert.ToInt32(_book.SelectedValue, CultureInfo.InvariantCulture));
-            var cost = command.ExecuteScalar();
-            if (cost != null && cost != DBNull.Value)
-            {
-                _payment.Value = Convert.ToDecimal(cost, CultureInfo.InvariantCulture);
-            }
-        }
-
         private void AddButtons(int y)
         {
-            var ok = new Button { Text = "Сохранить", Location = new Point(415, y), Width = 105, Height = 30 };
-            var cancel = new Button { Text = "Отмена", Location = new Point(525, y), Width = 105, Height = 30 };
+            var ok = new Button { Text = "Сохранить", Location = new Point(435, y), Width = 105, Height = 30 };
+            var cancel = new Button { Text = "Отмена", Location = new Point(545, y), Width = 105, Height = 30 };
             ok.Click += (_, _) =>
             {
                 if (_student.SelectedValue == null)
@@ -1248,21 +1613,15 @@ namespace Library
                     return;
                 }
 
-                if (_book.SelectedValue == null)
-                {
-                    MessageBox.Show("Выберите книгу.");
-                    return;
-                }
-
-                if (DueDate < IssueDate)
+                if (DueDate < LoanDate)
                 {
                     MessageBox.Show("Срок возврата не может быть раньше даты выдачи.");
                     return;
                 }
 
-                if (ReturnDate.HasValue && ReturnDate.Value < IssueDate)
+                if (SelectedBookIds.Count == 0)
                 {
-                    MessageBox.Show("Дата возврата не может быть раньше даты выдачи.");
+                    MessageBox.Show("Выберите хотя бы одну книгу.");
                     return;
                 }
 

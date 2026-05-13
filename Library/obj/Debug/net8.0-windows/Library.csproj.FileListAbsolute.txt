@@ -1,4 +1,3 @@
-C:\Users\LEGION_PRO\source\repos\Library\Library\bin\Debug\net8.0-windows\Library.exe
 C:\Users\LEGION_PRO\source\repos\Library\Library\bin\Debug\net8.0-windows\Library.deps.json
 C:\Users\LEGION_PRO\source\repos\Library\Library\bin\Debug\net8.0-windows\Library.runtimeconfig.json
 C:\Users\LEGION_PRO\source\repos\Library\Library\bin\Debug\net8.0-windows\Library.dll
@@ -25,4 +24,9 @@ C:\Users\LEGION_PRO\source\repos\Library\artifacts\verify-build\Library.deps.jso
 C:\Users\LEGION_PRO\source\repos\Library\artifacts\verify-build\Library.runtimeconfig.json
 C:\Users\LEGION_PRO\source\repos\Library\artifacts\verify-build\Library.dll
 C:\Users\LEGION_PRO\source\repos\Library\artifacts\verify-build\Library.pdb
-C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library.csproj.CopyComplete
+C:\Users\LEGION_PRO\source\repos\Library\Library\bin\Debug\net8.0-windows\Library.exe
+C:\Users\LEGION_PRO\source\repos\Library\build-check\Library.deps.json
+C:\Users\LEGION_PRO\source\repos\Library\build-check\Library.runtimeconfig.json
+C:\Users\LEGION_PRO\source\repos\Library\build-check\Library.dll
+C:\Users\LEGION_PRO\source\repos\Library\build-check\Library.pdb
+C:\Users\LEGION_PRO\source\repos\Library\Library\obj\Debug\net8.0-windows\Library.csproj.Up2Date
